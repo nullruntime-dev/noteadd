@@ -1,0 +1,127 @@
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #0f1115;
+  color: #e6e6e6;
+}
+
+/* Scrollbars */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2a2f3a;
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #3a4252;
+}
+
+/* CodeMirror fill */
+.cm-editor {
+  height: 100%;
+}
+.cm-editor .cm-scroller {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Markdown preview */
+.prose-noteadd {
+  line-height: 1.7;
+  font-size: 15px;
+}
+.prose-noteadd h1 { font-size: 1.9em; font-weight: 700; margin: 1em 0 0.5em; }
+.prose-noteadd h2 { font-size: 1.5em; font-weight: 700; margin: 1.2em 0 0.5em; }
+.prose-noteadd h3 { font-size: 1.25em; font-weight: 600; margin: 1.2em 0 0.4em; }
+.prose-noteadd p { margin: 0.7em 0; }
+.prose-noteadd ul { list-style: disc; padding-left: 1.5em; margin: 0.6em 0; }
+.prose-noteadd ol { list-style: decimal; padding-left: 1.5em; margin: 0.6em 0; }
+.prose-noteadd code {
+  background: #1a1f29;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.88em;
+}
+.prose-noteadd pre {
+  background: #15171c;
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  border: 1px solid #232833;
+}
+.prose-noteadd pre code {
+  background: none;
+  padding: 0;
+}
+.prose-noteadd blockquote {
+  border-left: 3px solid #4a5266;
+  padding-left: 1em;
+  color: #a0a7b5;
+  margin: 0.8em 0;
+}
+.prose-noteadd a {
+  color: #7aa2f7;
+  text-decoration: none;
+}
+.prose-noteadd a:hover { text-decoration: underline; }
+.prose-noteadd table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+}
+.prose-noteadd th,
+.prose-noteadd td {
+  border: 1px solid #2a2f3a;
+  padding: 0.4em 0.7em;
+}
+.prose-noteadd .wikilink {
+  color: #9ece6a;
+  background: rgba(158, 206, 106, 0.1);
+  padding: 0.05em 0.3em;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.prose-noteadd .wikilink:hover {
+  background: rgba(158, 206, 106, 0.2);
+}
+.prose-noteadd .wikilink-missing {
+  color: #f7768e;
+  background: rgba(247, 118, 142, 0.1);
+}
+.prose-noteadd .tag {
+  color: #bb9af7;
+  background: rgba(187, 154, 247, 0.1);
+  padding: 0.05em 0.4em;
+  border-radius: 999px;
+  font-size: 0.85em;
+}
+
+/* Highlight.js theme (minimal) */
+.hljs-keyword, .hljs-built_in { color: #bb9af7; }
+.hljs-string { color: #9ece6a; }
+.hljs-number { color: #ff9e64; }
+.hljs-comment { color: #5c6370; font-style: italic; }
+.hljs-function .hljs-title, .hljs-title.function_ { color: #7aa2f7; }
+.hljs-attr, .hljs-attribute { color: #e0af68; }
+.hljs-tag { color: #f7768e; }

@@ -1,0 +1,18 @@
+services:
+  notepadd:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nullruntimedev/noteadd:latest
+    container_name: notepadd
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    volumes:
+      - notepadd-repo:/app/.notepadd-repo
+      - ./.env:/app/.env
+
+volumes:
+  notepadd-repo:

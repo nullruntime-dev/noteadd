@@ -1,0 +1,13 @@
+node_modules
+dist
+.notepadd-repo
+.env
+.env.local
+*.log
+.git
+.oxlintrc.json
+README.md
+Dockerfile
+Dockerfile.builder
+compose.yml
+.dockerignore
