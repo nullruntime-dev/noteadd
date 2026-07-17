@@ -19,7 +19,7 @@ jobs:
     - name: Login to local registry
       uses: docker/login-action@v3
       with:
-        url: ${{secrets.PRIVATE_DOCKER_REGISTRY_URL}}
+        url: 192.168.50.202:5000
         username: ${{ secrets.PRIVATE_DOCKER_REGISTRY_USERNAME }}
         password: ${{ secrets.PRIVATE_DOCKER_REGISTRY_PASSWORD }}
     
