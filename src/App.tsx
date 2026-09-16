@@ -23,6 +23,7 @@ import type { VaultMode } from "./types"
 import { FileTree } from "./components/FileTree"
 import { MarkdownEditor } from "./components/MarkdownEditor"
 import { MarkdownPreview } from "./components/MarkdownPreview"
+import { ResizeHandle } from "./components/ResizeHandle"
 import { BacklinksPanel } from "./components/BacklinksPanel"
 import { TagsPanel } from "./components/TagsPanel"
 import { SearchPalette } from "./components/SearchPalette"
@@ -35,6 +36,60 @@ type ViewMode = "editor" | "preview" | "split"
 /** Extract a short repo name from an HTTPS clone URL, e.g. "user/repo.git" → "repo". */
 function repoNameFromUrl(url: string | undefined): string {
   return url?.match(/\/([^/]+?)(?:\.git)?\/?$/)?.[1] ?? "Git Vault"
+}
+
+const SIDEBAR_WIDTH_KEY = "notepadd.ui.sidebarWidth.v1"
+const SIDEBAR_MIN = 180
+const SIDEBAR_MAX = 480
+const SIDEBAR_DEFAULT = 256
+
+function clampSidebarWidth(w: number): number {
+  return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w)))
+}
+
+function loadSidebarWidth(): number {
+  try {
+    const raw = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY))
+    if (Number.isFinite(raw) && raw > 0) return clampSidebarWidth(raw)
+  } catch {
+    // ignore
+  }
+  return SIDEBAR_DEFAULT
+}
+
+function saveSidebarWidth(w: number): void {
+  try {
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(w)))
+  } catch {
+    // ignore
+  }
+}
+
+const SPLIT_PCT_KEY = "notepadd.ui.splitPct.v1"
+const SPLIT_MIN_PCT = 20
+const SPLIT_MAX_PCT = 80
+const SPLIT_DEFAULT_PCT = 50
+
+function clampSplitPct(pct: number): number {
+  return Math.min(SPLIT_MAX_PCT, Math.max(SPLIT_MIN_PCT, Math.round(pct * 100) / 100))
+}
+
+function loadSplitPct(): number {
+  try {
+    const raw = Number(localStorage.getItem(SPLIT_PCT_KEY))
+    if (Number.isFinite(raw) && raw > 0) return clampSplitPct(raw)
+  } catch {
+    // ignore
+  }
+  return SPLIT_DEFAULT_PCT
+}
+
+function saveSplitPct(pct: number): void {
+  try {
+    localStorage.setItem(SPLIT_PCT_KEY, String(pct))
+  } catch {
+    // ignore
+  }
 }
 
 export default function App() {
@@ -63,6 +118,8 @@ export default function App() {
   const intervalMs = useSync((s) => s.intervalMs)
 
   const [view, setView] = useState<ViewMode>("split")
+  const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
+  const [splitPct, setSplitPct] = useState(loadSplitPct)
   const [searchOpen, setSearchOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
   const [gitConfigOpen, setGitConfigOpen] = useState(false)
@@ -89,6 +146,24 @@ export default function App() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
+  }, [])
+
+  // --- Resizable panes (drag the separators; double-click resets) ---
+  const sidebarWidthRef = useRef(sidebarWidth)
+  const applySidebarWidth = useCallback((w: number, persist = true) => {
+    const next = clampSidebarWidth(w)
+    sidebarWidthRef.current = next
+    setSidebarWidth(next)
+    if (persist) saveSidebarWidth(next)
+  }, [])
+
+  const splitPctRef = useRef(splitPct)
+  const splitRowRef = useRef<HTMLDivElement>(null)
+  const applySplitPct = useCallback((pct: number, persist = true) => {
+    const next = clampSplitPct(pct)
+    splitPctRef.current = next
+    setSplitPct(next)
+    if (persist) saveSplitPct(next)
   }, [])
 
   async function handleUpload() {
@@ -426,7 +501,10 @@ export default function App() {
       {/* Body */}
       <div className="flex flex-1 min-h-0">
         {/* Sidebar */}
-        <aside className="w-64 flex-shrink-0 border-r border-[#232833] bg-[#13151b] flex flex-col">
+        <aside
+          style={{ width: sidebarWidth }}
+          className="flex-shrink-0 bg-[#13151b] flex flex-col"
+        >
           <FileTree />
           <div className="border-t border-[#232833] overflow-auto max-h-72">
             <TagsPanel />
@@ -435,6 +513,15 @@ export default function App() {
             {active && <BacklinksPanel noteId={active.id} />}
           </div>
         </aside>
+        <ResizeHandle
+          direction="col"
+          ariaLabel="Resize sidebar"
+          className="w-1.5 border-r border-[#232833]"
+          onDrag={(x) => applySidebarWidth(x, false)}
+          onDragEnd={() => saveSidebarWidth(sidebarWidthRef.current)}
+          onReset={() => applySidebarWidth(SIDEBAR_DEFAULT)}
+          onKeyAdjust={(d) => applySidebarWidth(sidebarWidthRef.current + d * 24)}
+        />
 
         {/* Main editor area */}
         <main className="flex-1 min-w-0 flex flex-col">
@@ -455,14 +542,32 @@ export default function App() {
               <div className="px-4 py-1.5 border-b border-[#232833] text-xs text-[#7a8290] truncate">
                 {active.path}
               </div>
-              <div className="flex-1 min-h-0 flex">
+              <div ref={splitRowRef} className="flex-1 min-h-0 flex">
                 {view !== "preview" && (
-                  <div className={clsx("min-h-0", view === "split" ? "w-1/2 border-r border-[#232833]" : "w-full")}>
+                  <div
+                    className={clsx("min-h-0", view === "split" ? "flex-shrink-0" : "w-full")}
+                    style={view === "split" ? { width: `${splitPct}%` } : undefined}
+                  >
                     <MarkdownEditor noteId={active.id} content={active.content} />
                   </div>
                 )}
+                {view === "split" && (
+                  <ResizeHandle
+                    direction="col"
+                    ariaLabel="Resize editor and preview"
+                    className="w-1.5 border-r border-[#232833]"
+                    onDrag={(x) => {
+                      const rect = splitRowRef.current?.getBoundingClientRect()
+                      if (!rect || rect.width === 0) return
+                      applySplitPct(((x - rect.left) / rect.width) * 100, false)
+                    }}
+                    onDragEnd={() => saveSplitPct(splitPctRef.current)}
+                    onReset={() => applySplitPct(SPLIT_DEFAULT_PCT)}
+                    onKeyAdjust={(d) => applySplitPct(splitPctRef.current + d * 5)}
+                  />
+                )}
                 {view !== "editor" && (
-                  <div className={clsx("min-h-0", view === "split" ? "w-1/2" : "w-full")}>
+                  <div className={clsx("min-h-0", view === "split" ? "flex-1 min-w-0" : "w-full")}>
                     <MarkdownPreview noteId={active.id} content={active.content} />
                   </div>
                 )}

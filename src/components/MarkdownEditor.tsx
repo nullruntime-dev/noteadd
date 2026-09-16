@@ -21,7 +21,8 @@ export function MarkdownEditor({ noteId, content }: EditorProps) {
       markdown({ base: markdownLanguage, codeLanguages: languages }),
       EditorView.lineWrapping,
       EditorView.theme({
-        "&": { backgroundColor: "transparent", fontSize: "14px" },
+        "&": { backgroundColor: "transparent", fontSize: "14px", height: "100%" },
+        ".cm-scroller": { overflow: "auto" },
         ".cm-content": { padding: "1rem 1.5rem" },
         ".cm-gutters": { display: "none" },
       }),
@@ -82,7 +83,7 @@ export function MarkdownEditor({ noteId, content }: EditorProps) {
         <CodeMirror
           ref={ref}
           value={content}
-          height="100%"
+          className="h-full"
           theme={githubDark}
           extensions={extensions}
           onChange={(val) => updateContent(noteId, val)}
