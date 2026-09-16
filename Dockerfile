@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG BASE_IMAGE=192.168.50.202:5000/base/node-24.16-ap:latest
+ARG BASE_IMAGE=docker-hub.local.l2c-lab.dev/base/node-24.16-ap:latest
 
 # ---- Stage 1: build the Vite client + install all deps for build ----
 FROM ${BASE_IMAGE} AS builder
