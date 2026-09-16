@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import { db } from "../db"
-import type { NoteNode } from "../types"
+import type { NoteNode, VaultMode } from "../types"
 import {
   extractTitle,
   normalizeName,
@@ -12,6 +12,18 @@ import { useSync } from "./sync"
 
 const fsAccessSupported =
   typeof window !== "undefined" && "showDirectoryPicker" in window
+
+const MODE_KEY = "notepadd.vault.mode.v1"
+
+function loadStoredMode(): VaultMode {
+  try {
+    const raw = localStorage.getItem(MODE_KEY)
+    if (raw === "browser" || raw === "local" || raw === "git") return raw
+  } catch {
+    // ignore
+  }
+  return "browser"
+}
 
 function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
@@ -26,6 +38,8 @@ interface FSHandle {
 
 interface VaultState {
   fsSupported: boolean
+  /** Active vault source. */
+  mode: VaultMode
   rootName: string | null
   rootHandle: FSHandle | null
   nodes: NoteNode[]
@@ -44,6 +58,8 @@ interface VaultState {
   openNote: (id: string | null) => void
   findByName: (name: string) => NoteNode | undefined
   clearValidationError: () => void
+  /** Switch the active vault source. `rootName` overrides the display label (e.g. git repo name). */
+  setMode: (mode: VaultMode, rootName?: string) => void
   importNotes: (
     notes: { path: string; content: string }[],
     options?: { skipEditedSince?: number | null },
@@ -92,6 +108,7 @@ async function readDirTree(
 
 export const useVault = create<VaultState>((set, get) => ({
   fsSupported: fsAccessSupported,
+  mode: loadStoredMode(),
   rootName: null,
   rootHandle: null,
   nodes: [],
@@ -102,6 +119,31 @@ export const useVault = create<VaultState>((set, get) => ({
 
   clearValidationError: () => set({ validationError: null }),
 
+  setMode: (mode, rootName) => {
+    try {
+      localStorage.setItem(MODE_KEY, mode)
+    } catch {
+      // ignore
+    }
+    const s = get()
+    const name =
+      rootName !== undefined
+        ? rootName
+        : mode === "browser"
+          ? s.nodes.length ? "Local Vault" : null
+          : s.rootName
+    // Leaving local mode: drop the FS handle and its directory-handle cache
+    // so a future folder open never writes into the old folder.
+    if (mode !== "local") {
+      dirHandleCache.clear()
+    }
+    set({
+      mode,
+      rootName: name,
+      rootHandle: mode === "local" ? s.rootHandle : null,
+    })
+  },
+
   openVault: async () => {
     if (!fsAccessSupported) {
       // Just initialize an empty in-memory vault if nothing exists.
@@ -109,6 +151,7 @@ export const useVault = create<VaultState>((set, get) => ({
       if (get().nodes.length === 0) {
         await get().createNote(null, "Welcome")
       }
+      get().setMode("browser")
       return
     }
     try {
@@ -119,6 +162,7 @@ export const useVault = create<VaultState>((set, get) => ({
       await readDirTree(handle, null, "", nodes)
       await db.nodes.clear()
       await db.nodes.bulkPut(nodes)
+      dirHandleCache.clear()
       set({
         rootName: handle.name,
         rootHandle: { kind: "directory", name: handle.name, handle },
@@ -126,6 +170,7 @@ export const useVault = create<VaultState>((set, get) => ({
         loading: false,
         activeId: null,
       })
+      get().setMode("local", handle.name)
     } catch (e) {
       set({ loading: false, error: e instanceof Error ? e.message : "Failed to open vault" })
     }

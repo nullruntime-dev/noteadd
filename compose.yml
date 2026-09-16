@@ -1,12 +1,9 @@
 services:
   notepadd:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: nullruntimedev/noteadd:latest
+    image: docker.io/nullruntimedev/noteadd:1.0.1
     container_name: notepadd
     ports:
-      - "3001:3001"
+      - "3002:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001

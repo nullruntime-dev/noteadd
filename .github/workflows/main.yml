@@ -6,7 +6,7 @@ on:
 
 jobs:
   docker-build:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions: 
       contents: write
     steps:
@@ -29,6 +29,8 @@ jobs:
         file: ./Dockerfile
         
         push: true
-        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.1
+        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.2,${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest
+        cache-from: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.2,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest
+        cache-to: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.2,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest,mode=max
 
     

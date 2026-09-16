@@ -12,11 +12,14 @@ import {
   GitBranch,
   Loader2,
   RefreshCw,
+  Globe,
+  ChevronDown,
 } from "lucide-react"
 import clsx from "clsx"
 import { useVault } from "./store/vault"
 import { useGit } from "./store/git"
 import { useSync, hashNotes } from "./store/sync"
+import type { VaultMode } from "./types"
 import { FileTree } from "./components/FileTree"
 import { MarkdownEditor } from "./components/MarkdownEditor"
 import { MarkdownPreview } from "./components/MarkdownPreview"
@@ -25,11 +28,18 @@ import { TagsPanel } from "./components/TagsPanel"
 import { SearchPalette } from "./components/SearchPalette"
 import { GraphView } from "./components/GraphView"
 import { GitConfigModal } from "./components/GitConfigModal"
+import { VaultConfigModal } from "./components/VaultConfigModal"
 
 type ViewMode = "editor" | "preview" | "split"
 
+/** Extract a short repo name from an HTTPS clone URL, e.g. "user/repo.git" → "repo". */
+function repoNameFromUrl(url: string | undefined): string {
+  return url?.match(/\/([^/]+?)(?:\.git)?\/?$/)?.[1] ?? "Git Vault"
+}
+
 export default function App() {
   const fsSupported = useVault((s) => s.fsSupported)
+  const vaultMode = useVault((s) => s.mode)
   const nodes = useVault((s) => s.nodes)
   const activeId = useVault((s) => s.activeId)
   const openVault = useVault((s) => s.openVault)
@@ -56,6 +66,7 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
   const [gitConfigOpen, setGitConfigOpen] = useState(false)
+  const [vaultConfigOpen, setVaultConfigOpen] = useState(false)
   const [uploadFlash, setUploadFlash] = useState<"ok" | "err" | null>(null)
   const [pullFlash, setPullFlash] = useState<"ok" | "err" | null>(null)
   const [autoFlash, setAutoFlash] = useState<string | null>(null)
@@ -122,6 +133,76 @@ export default function App() {
     setTimeout(() => setPullFlash(null), 4000)
   }
 
+  /**
+   * Pull the configured remote and make it the active vault (git mode).
+   * Same-path local notes adopt the remote version unless skipped by confirm.
+   */
+  const activateGitVault = useCallback(async (opts?: { skipConfirm?: boolean }) => {
+    if (!useGit.getState().configured) {
+      setGitConfigOpen(true)
+      return false
+    }
+    const vault = useVault.getState()
+    if (!opts?.skipConfirm && vault.mode !== "git" && vault.nodes.length > 0) {
+      if (
+        !window.confirm(
+          "Switch to the git vault? Notes with the same path on the remote will be overwritten by the remote version.",
+        )
+      ) {
+        return false
+      }
+    }
+    const pulled = await useGit.getState().pull()
+    if (!pulled) return false
+    await useVault.getState().importNotes(pulled, {})
+    useVault
+      .getState()
+      .setMode("git", repoNameFromUrl(useGit.getState().config?.GIT_REMOTE_URL))
+    const notes = useVault
+      .getState()
+      .nodes.filter((n) => n.type === "note")
+      .map((n) => ({ path: n.path, content: n.content }))
+    useSync.getState().setSnapshot(hashNotes(notes))
+    useSync.setState({ lastSyncAt: Date.now() })
+    setPullFlash("ok")
+    setTimeout(() => setPullFlash(null), 4000)
+    return true
+  }, [])
+
+  /** Switch the vault source: in-browser storage, a local folder, or the git remote. */
+  async function handleVaultSwitch(mode: VaultMode) {
+    const vault = useVault.getState()
+    if (mode === "browser") {
+      if (vault.mode === "browser" && vault.rootName) {
+        setVaultConfigOpen(false)
+        return
+      }
+      if (useVault.getState().nodes.length === 0) {
+        await useVault.getState().createNote(null, "Welcome")
+      }
+      useVault.getState().setMode("browser")
+      setVaultConfigOpen(false)
+      return
+    }
+    if (mode === "local") {
+      if (!vault.fsSupported) return
+      if (
+        vault.nodes.length > 0 &&
+        !window.confirm(
+          "Open a folder as your vault? The folder's contents will REPLACE the notes currently shown.",
+        )
+      ) {
+        return
+      }
+      await vault.openVault()
+      if (useVault.getState().mode === "local") setVaultConfigOpen(false)
+      return
+    }
+    // git
+    const ok = await activateGitVault()
+    if (ok) setVaultConfigOpen(false)
+  }
+
   /** Single auto-sync cycle: pull first, then upload if changed. */
   const doAutoSync = useCallback(async () => {
     if (!useGit.getState().configured) return
@@ -177,6 +258,15 @@ export default function App() {
     }
   }, [autoSync, intervalMs, doAutoSync])
 
+  // On load, resume the git vault if that was the last active source.
+  const gitStartupPullDone = useRef(false)
+  useEffect(() => {
+    if (gitStartupPullDone.current) return
+    if (!gitConfigured || useVault.getState().mode !== "git") return
+    gitStartupPullDone.current = true
+    void activateGitVault({ skipConfirm: true })
+  }, [gitConfigured, activateGitVault])
+
   const active = useMemo(
     () => nodes.find((n) => n.id === activeId && n.type === "note"),
     [nodes, activeId],
@@ -188,18 +278,23 @@ export default function App() {
 
   if (!rootName && !loading) {
     return (
-      <WelcomeScreen
-        fsSupported={fsSupported}
-        onOpen={openVault}
-        onLocal={() => loadAll().then(() => {
-          if (useVault.getState().nodes.length === 0) {
-            useVault.getState().createNote(null, "Welcome")
-          }
-        })}
-        error={error}
-        gitConfigured={gitConfigured}
-        onSetupGit={() => setGitConfigOpen(true)}
-      />
+      <>
+        <WelcomeScreen
+          fsSupported={fsSupported}
+          onOpen={openVault}
+          onLocal={() => loadAll().then(async () => {
+            if (useVault.getState().nodes.length === 0) {
+              await useVault.getState().createNote(null, "Welcome")
+            }
+            useVault.getState().setMode("browser")
+          })}
+          error={error}
+          gitConfigured={gitConfigured}
+          onSetupGit={() => setGitConfigOpen(true)}
+          onGit={() => void handleVaultSwitch("git")}
+        />
+        <GitConfigModal open={gitConfigOpen} onClose={() => setGitConfigOpen(false)} />
+      </>
     )
   }
 
@@ -208,7 +303,17 @@ export default function App() {
       {/* Top bar */}
       <header className="flex items-center gap-2 px-3 py-2 border-b border-[#232833] bg-[#13151b]">
         <span className="text-sm font-semibold text-white mr-2">noteadd</span>
-        <span className="text-xs text-[#5c6370]">/{rootName}</span>
+        <button
+          onClick={() => setVaultConfigOpen(true)}
+          className="flex items-center gap-1.5 px-1.5 py-0.5 rounded text-xs text-[#5c6370] hover:text-[#c8cdd6] hover:bg-[#1d2030]"
+          title="Vault configuration"
+        >
+          {vaultMode === "browser" ? <Globe size={12} /> : null}
+          {vaultMode === "local" ? <FolderOpen size={12} /> : null}
+          {vaultMode === "git" ? <GitBranch size={12} /> : null}
+          /{rootName}
+          <ChevronDown size={12} />
+        </button>
         <div className="flex-1" />
         <div className="flex items-center gap-0.5 bg-[#0f1115] border border-[#232833] rounded p-0.5">
           <ViewBtn active={view === "editor"} onClick={() => setView("editor")} title="Editor only">
@@ -373,6 +478,15 @@ export default function App() {
 
       <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       {graphOpen && <GraphView onClose={() => setGraphOpen(false)} />}
+      <VaultConfigModal
+        open={vaultConfigOpen}
+        onClose={() => setVaultConfigOpen(false)}
+        onSwitch={(m) => void handleVaultSwitch(m)}
+        onSetupGit={() => {
+          setVaultConfigOpen(false)
+          setGitConfigOpen(true)
+        }}
+      />
       <GitConfigModal open={gitConfigOpen} onClose={() => setGitConfigOpen(false)} />
 
       {(uploadFlash || gitUploadError || pullFlash || autoFlash) && (
@@ -426,6 +540,7 @@ function WelcomeScreen({
   error,
   gitConfigured,
   onSetupGit,
+  onGit,
 }: {
   fsSupported: boolean
   onOpen: () => void
@@ -433,7 +548,9 @@ function WelcomeScreen({
   error: string | null
   gitConfigured: boolean
   onSetupGit: () => void
+  onGit: () => void
 }) {
+  const pullError = useGit((s) => s.pullError)
   return (
     <div className="flex items-center justify-center h-full overflow-auto p-6">
       <div className="w-full max-w-2xl">
@@ -452,7 +569,8 @@ function WelcomeScreen({
               Open a Vault
             </h2>
             <p className="text-xs text-[#7a8290] mb-4">
-              Choose where your notes live: a real folder on disk, or in-browser storage.
+              Choose where your notes live: a real folder on disk, in-browser storage, or a git
+              repository. You can change this any time from the header.
             </p>
             <div className="flex flex-col gap-2">
               <button
@@ -467,7 +585,15 @@ function WelcomeScreen({
                 onClick={onLocal}
                 className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1d2030] hover:bg-[#2a2f3a] text-[#c8cdd6] text-sm font-medium rounded-md"
               >
+                <Globe size={16} />
                 Use In-Browser Vault
+              </button>
+              <button
+                onClick={onGit}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1d2030] hover:bg-[#2a2f3a] text-[#c8cdd6] text-sm font-medium rounded-md border border-[#232833]"
+              >
+                <GitBranch size={16} />
+                {gitConfigured ? "Use Git Vault" : "Use Git Vault (set up first)"}
               </button>
             </div>
             {!fsSupported && (
@@ -476,6 +602,9 @@ function WelcomeScreen({
               </p>
             )}
             {error && <p className="text-sm text-[#f7768e] mt-3">{error}</p>}
+            {pullError && (
+              <p className="text-xs text-[#f7768e] mt-3 break-words">⚠ {pullError}</p>
+            )}
           </section>
 
           {/* Git setup */}
