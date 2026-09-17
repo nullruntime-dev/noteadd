@@ -12,6 +12,9 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Set up QEMU (emulates linux/arm64 on the amd64 runner)
+      uses: docker/setup-qemu-action@v3
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       with:
@@ -39,9 +42,14 @@ jobs:
       with:
         context: .
         file: ./Dockerfile
+        platforms: linux/amd64,linux/arm64
+        # Official multi-arch base so the arm64 build has an arm64 FROM image;
+        # local builds keep the private-mirror default from the Dockerfile ARG.
+        build-args: |
+          BASE_IMAGE=node:24.16-alpine
         push: true
-        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.4,${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest
-        cache-from: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.4,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest
-        cache-to: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.4,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest,mode=max
+        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.5,${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest
+        cache-from: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.5,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest
+        cache-to: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.5,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest,mode=max
 
     

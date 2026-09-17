@@ -3,7 +3,9 @@
 ARG BASE_IMAGE=docker-hub.local.l2c-lab.dev/base/node-24.16-ap:latest
 
 # ---- Stage 1: build the Vite client + install all deps for build ----
-FROM ${BASE_IMAGE} AS builder
+# --platform=$BUILDPLATFORM: builder always runs natively; dist/ is
+# platform-independent, so multi-arch builds only emulate the runtime stage.
+FROM --platform=$BUILDPLATFORM ${BASE_IMAGE} AS builder
 WORKDIR /app
 
 # Install all deps (including devDependencies) for the build
