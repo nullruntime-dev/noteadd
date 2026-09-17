@@ -9,20 +9,24 @@ import {
   validateFilename,
 } from "../lib/parse"
 import { useSync } from "./sync"
+import { useVolume } from "./volume"
 
 const fsAccessSupported =
   typeof window !== "undefined" && "showDirectoryPicker" in window
 
 const MODE_KEY = "notepadd.vault.mode.v1"
 
+/** The server-backed volume is the default vault: files are written there. */
+const DEFAULT_MODE: VaultMode = "volume"
+
 function loadStoredMode(): VaultMode {
   try {
     const raw = localStorage.getItem(MODE_KEY)
-    if (raw === "browser" || raw === "local" || raw === "git") return raw
+    if (raw === "volume" || raw === "browser" || raw === "local" || raw === "git") return raw
   } catch {
     // ignore
   }
-  return "browser"
+  return DEFAULT_MODE
 }
 
 function uid(): string {
@@ -137,6 +141,10 @@ export const useVault = create<VaultState>((set, get) => ({
     if (mode !== "local") {
       dirHandleCache.clear()
     }
+    // Leaving volume mode: send any queued writes before switching away.
+    if (s.mode === "volume" && mode !== "volume") {
+      void useVolume.getState().flush()
+    }
     set({
       mode,
       rootName: name,
@@ -210,6 +218,7 @@ export const useVault = create<VaultState>((set, get) => ({
     await db.nodes.put(node)
     set((s) => ({ nodes: [...s.nodes, node], activeId: node.id, validationError: null }))
     await persistFs(get, node)
+    if (get().mode === "volume") useVolume.getState().writeNote(node.path, node.content)
     return node.id
   },
 
@@ -278,6 +287,7 @@ export const useVault = create<VaultState>((set, get) => ({
     const updated = updateList(get().nodes)
     await db.nodes.bulkPut(updated)
     set({ nodes: updated, validationError: null })
+    if (get().mode === "volume") void useVolume.getState().movePath(oldPath, newPath)
     return true
   },
 
@@ -293,6 +303,7 @@ export const useVault = create<VaultState>((set, get) => ({
       nodes: s.nodes.filter((n) => !ids.has(n.id)),
       activeId: ids.has(s.activeId ?? "") ? null : s.activeId,
     }))
+    if (get().mode === "volume") void useVolume.getState().removePath(node.path)
   },
 
   updateContent: async (id, content) => {
@@ -337,6 +348,10 @@ export const useVault = create<VaultState>((set, get) => ({
     await persistFs(get, finalNode)
     // If we renamed, the old file should be removed on disk.
     if (didRename) await removeFsFile(get, node)
+    if (get().mode === "volume") {
+      if (didRename) void useVolume.getState().movePath(node.path, finalNode.path)
+      useVolume.getState().writeNote(finalNode.path, finalNode.content)
+    }
   },
 
   openNote: (id) => set({ activeId: id }),

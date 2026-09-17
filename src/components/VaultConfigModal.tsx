@@ -1,8 +1,9 @@
 import { useEffect } from "react"
-import { X, Globe, FolderOpen, GitBranch, Loader2, Check } from "lucide-react"
+import { X, Globe, FolderOpen, GitBranch, Database, Loader2, Check } from "lucide-react"
 import clsx from "clsx"
 import { useVault } from "../store/vault"
 import { useGit } from "../store/git"
+import { useVolume } from "../store/volume"
 import type { VaultMode } from "../types"
 
 interface Props {
@@ -25,6 +26,8 @@ export function VaultConfigModal({ open, onClose, onSwitch, onSetupGit }: Props)
   const gitConfig = useGit((s) => s.config)
   const pulling = useGit((s) => s.pulling)
   const pullError = useGit((s) => s.pullError)
+  const volumePulling = useVolume((s) => s.pulling)
+  const volumeError = useVolume((s) => s.error)
 
   useEffect(() => {
     if (!open) return
@@ -68,6 +71,35 @@ export function VaultConfigModal({ open, onClose, onSwitch, onSetupGit }: Props)
             Change where your notes live — now and at any time. Each option explains what happens
             to your current notes before you switch.
           </p>
+
+          {/* Server volume (default) */}
+          <OptionCard
+            active={mode === "volume"}
+            badge="Default"
+            icon={<Database size={16} />}
+            title="Server Volume"
+            description="Notes are written as .md files into the server's persistent volume (Docker volume). Every create, edit, rename, and delete is saved there automatically. Works in any browser."
+            action={
+              <button
+                onClick={() => onSwitch("volume")}
+                disabled={volumePulling}
+                className={ACTION_BTN}
+              >
+                {volumePulling ? <Loader2 size={13} className="animate-spin" /> : null}
+                {volumePulling
+                  ? "Opening…"
+                  : mode === "volume"
+                    ? "Refresh from Volume"
+                    : "Use Server Volume"}
+              </button>
+            }
+          >
+            {volumeError && (
+              <p className="text-[10px] text-[#f7768e] mb-2 break-words">
+                ⚠ {volumeError}
+              </p>
+            )}
+          </OptionCard>
 
           {/* In-browser storage */}
           <OptionCard
@@ -168,6 +200,7 @@ function OptionCard({
   description,
   action,
   active,
+  badge,
   children,
 }: {
   icon: React.ReactNode
@@ -175,6 +208,7 @@ function OptionCard({
   description: string
   action: React.ReactNode
   active: boolean
+  badge?: string
   children?: React.ReactNode
 }) {
   return (
@@ -194,10 +228,16 @@ function OptionCard({
           {icon}
         </span>
         <span className="text-sm font-medium text-white">{title}</span>
-        {active && (
+        {active ? (
           <span className="ml-auto text-[10px] uppercase tracking-wide text-[#9ece6a] flex items-center gap-1">
             <Check size={11} /> Current
           </span>
+        ) : (
+          badge && (
+            <span className="ml-auto text-[10px] uppercase tracking-wide text-[#7aa2f7]">
+              {badge}
+            </span>
+          )
         )}
       </div>
       <p className="text-xs text-[#7a8290] mb-2.5">{description}</p>

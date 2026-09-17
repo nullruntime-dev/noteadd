@@ -26,6 +26,7 @@ dist-ssr
 # notepadd git integration
 .env
 .notepadd-repo/
+.notepadd-volume/
 
 git@github.com:v10o/noteadd.git
 dist

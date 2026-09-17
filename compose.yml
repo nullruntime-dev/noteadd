@@ -1,15 +1,14 @@
 services:
   notepadd:
-    image: docker.io/nullruntimedev/noteadd:1.0.1
-    container_name: notepadd
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: notepadd-dev
     ports:
       - "3002:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
     volumes:
-      - notepadd-repo:/app/.notepadd-repo
-      - ./.env:/app/.env
-
-volumes:
-  notepadd-repo:
+      - /run/media/arch_btw/USB28/notepadd-repo:/app/.notepadd-repo
+      - /run/media/arch_btw/USB28/notepadd-volume:/app/.notepadd-volume

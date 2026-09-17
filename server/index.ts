@@ -291,6 +291,117 @@ app.post("/api/git/pull", async (_req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Volume vault: notes are written straight into a persistent server-side
+// directory. In production this directory is a Docker volume, so files survive
+// container restarts. Clients write through on every create/edit/rename/delete.
+// ---------------------------------------------------------------------------
+
+const VOLUME_DIR = path.resolve(ROOT, process.env.VOLUME_DIR ?? ".notepadd-volume")
+
+/**
+ * Validate a client-supplied note path, returning it relative to the volume
+ * root — or null when unsafe (traversal, absolute escape, Windows-invalid
+ * characters, overly long segments).
+ */
+function safeVolumePath(raw: unknown): string | null {
+  const clean = String(raw ?? "").replace(/\\/g, "/").replace(/^\/+/, "")
+  if (!clean) return null
+  for (const seg of clean.split("/")) {
+    if (!seg || seg === "." || seg === ".." || seg.length > 100) return null
+    if (/[:*?"<>|]/.test(seg)) return null
+  }
+  const full = path.resolve(VOLUME_DIR, clean)
+  if (full !== VOLUME_DIR && !full.startsWith(VOLUME_DIR + path.sep)) return null
+  return clean
+}
+
+/** GET /api/volume/notes — list every .md file stored in the volume. */
+app.get("/api/volume/notes", (_req, res) => {
+  try {
+    const notes: { path: string; content: string }[] = []
+    const walk = (dir: string, base: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith(".")) continue
+        const full = path.join(dir, entry.name)
+        const rel = base ? `${base}/${entry.name}` : entry.name
+        if (entry.isDirectory()) walk(full, rel)
+        else if (entry.name.endsWith(".md")) {
+          notes.push({ path: rel, content: fs.readFileSync(full, "utf8") })
+        }
+      }
+    }
+    if (fs.existsSync(VOLUME_DIR)) walk(VOLUME_DIR, "")
+    res.json({ ok: true, notes })
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : "Failed to list volume" })
+  }
+})
+
+/** POST /api/volume/notes — write/upsert notes ({ notes: [{ path, content }] }). */
+app.post("/api/volume/notes", (req, res) => {
+  const raw = req.body?.notes
+  if (!Array.isArray(raw)) {
+    res.status(400).json({ error: "notes must be an array" })
+    return
+  }
+  try {
+    fs.mkdirSync(VOLUME_DIR, { recursive: true })
+    for (const note of raw) {
+      const safe = safeVolumePath(note?.path)
+      if (!safe) {
+        res.status(400).json({ error: `Invalid note path: ${String(note?.path)}` })
+        return
+      }
+      const full = path.join(VOLUME_DIR, safe)
+      fs.mkdirSync(path.dirname(full), { recursive: true })
+      fs.writeFileSync(full, String(note?.content ?? ""), "utf8")
+    }
+    res.json({ ok: true, count: raw.length })
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : "Failed to write notes" })
+  }
+})
+
+/** DELETE /api/volume/notes — delete a note or folder ({ path }) from the volume. */
+app.delete("/api/volume/notes", (req, res) => {
+  const safe = safeVolumePath(req.body?.path)
+  if (!safe) {
+    res.status(400).json({ error: "Invalid path" })
+    return
+  }
+  try {
+    const full = path.join(VOLUME_DIR, safe)
+    // Idempotent: a path that no longer exists is already "deleted".
+    if (fs.existsSync(full)) fs.rmSync(full, { recursive: true, force: true })
+    res.json({ ok: true })
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : "Failed to delete" })
+  }
+})
+
+/** POST /api/volume/move — rename/move a note or folder ({ from, to }) in the volume. */
+app.post("/api/volume/move", (req, res) => {
+  const from = safeVolumePath(req.body?.from)
+  const to = safeVolumePath(req.body?.to)
+  if (!from || !to) {
+    res.status(400).json({ error: "Invalid from/to path" })
+    return
+  }
+  try {
+    const fromFull = path.join(VOLUME_DIR, from)
+    const toFull = path.join(VOLUME_DIR, to)
+    // Idempotent: nothing at the source means there is nothing to move.
+    if (fs.existsSync(fromFull)) {
+      fs.mkdirSync(path.dirname(toFull), { recursive: true })
+      fs.renameSync(fromFull, toFull)
+    }
+    res.json({ ok: true })
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : "Failed to move" })
+  }
+})
+
 const PORT = Number(process.env.PORT ?? 3001)
 
 // In production, serve the built Vite client from dist/ on the same origin

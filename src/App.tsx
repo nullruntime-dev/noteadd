@@ -6,6 +6,7 @@ import {
   PenLine,
   Eye,
   Columns2,
+  Database,
   UploadCloud,
   DownloadCloud,
   Settings,
@@ -19,6 +20,7 @@ import clsx from "clsx"
 import { useVault } from "./store/vault"
 import { useGit } from "./store/git"
 import { useSync, hashNotes } from "./store/sync"
+import { useVolume } from "./store/volume"
 import type { VaultMode } from "./types"
 import { FileTree } from "./components/FileTree"
 import { MarkdownEditor } from "./components/MarkdownEditor"
@@ -116,6 +118,7 @@ export default function App() {
   const autoSync = useSync((s) => s.autoSync)
   const setAutoSync = useSync((s) => s.setAutoSync)
   const intervalMs = useSync((s) => s.intervalMs)
+  const volumePulling = useVolume((s) => s.pulling)
 
   const [view, setView] = useState<ViewMode>("split")
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
@@ -244,9 +247,57 @@ export default function App() {
     return true
   }, [])
 
-  /** Switch the vault source: in-browser storage, a local folder, or the git remote. */
+  /**
+   * Make the server volume the active vault (volume mode). Pulls its notes,
+   * pushes any local notes the volume is missing, and writes all further
+   * changes through to it.
+   */
+  const activateVolumeVault = useCallback(async (opts?: { skipConfirm?: boolean }) => {
+    const vault = useVault.getState()
+    const pulled = await useVolume.getState().pull()
+    if (pulled === null) return false
+    const localNotes = vault.nodes.filter((n) => n.type === "note")
+    const pulledPaths = new Set(pulled.map((n) => n.path))
+    const missing = localNotes
+      .filter((n) => !pulledPaths.has(n.path))
+      .map((n) => ({ path: n.path, content: n.content }))
+
+    if (
+      pulled.length > 0 &&
+      vault.mode !== "volume" &&
+      localNotes.length > 0 &&
+      !opts?.skipConfirm &&
+      !window.confirm(
+        "Switch to the server volume? Notes with the same path will be replaced by the volume's version.",
+      )
+    ) {
+      return false
+    }
+
+    // The volume is where all files live: push local notes it doesn't have yet.
+    if (missing.length > 0) await useVolume.getState().writeAll(missing)
+    if (pulled.length > 0) await useVault.getState().importNotes(pulled, {})
+    useVault.getState().setMode("volume", "Server Volume")
+    if (useVault.getState().nodes.length === 0) {
+      await useVault.getState().createNote(null, "Welcome")
+    }
+    const notes = useVault
+      .getState()
+      .nodes.filter((n) => n.type === "note")
+      .map((n) => ({ path: n.path, content: n.content }))
+    useSync.getState().setSnapshot(hashNotes(notes))
+    useSync.setState({ lastSyncAt: Date.now() })
+    return true
+  }, [])
+
+  /** Switch the vault source: the server volume, in-browser storage, a local folder, or the git remote. */
   async function handleVaultSwitch(mode: VaultMode) {
     const vault = useVault.getState()
+    if (mode === "volume") {
+      const ok = await activateVolumeVault()
+      if (ok) setVaultConfigOpen(false)
+      return
+    }
     if (mode === "browser") {
       if (vault.mode === "browser" && vault.rootName) {
         setVaultConfigOpen(false)
@@ -342,16 +393,27 @@ export default function App() {
     void activateGitVault({ skipConfirm: true })
   }, [gitConfigured, activateGitVault])
 
+  // On load, resume the volume vault when it's the active source (it's the
+  // default). Waits for Dexie to load so local notes join the pull merge.
+  const volumeStartupDone = useRef(false)
+  useEffect(() => {
+    if (volumeStartupDone.current) return
+    if (useVault.getState().mode !== "volume") return
+    if (useVault.getState().loading) return
+    volumeStartupDone.current = true
+    void activateVolumeVault({ skipConfirm: true })
+  }, [loading, activateVolumeVault])
+
   const active = useMemo(
     () => nodes.find((n) => n.id === activeId && n.type === "note"),
     [nodes, activeId],
   )
 
-  if (loading && nodes.length === 0) {
+  if ((loading || volumePulling) && nodes.length === 0) {
     return <div className="flex items-center justify-center h-full text-[#5c6370]">Loading…</div>
   }
 
-  if (!rootName && !loading) {
+  if (!rootName && !loading && !volumePulling) {
     return (
       <>
         <WelcomeScreen
@@ -367,6 +429,7 @@ export default function App() {
           gitConfigured={gitConfigured}
           onSetupGit={() => setGitConfigOpen(true)}
           onGit={() => void handleVaultSwitch("git")}
+          onVolume={() => void handleVaultSwitch("volume")}
         />
         <GitConfigModal open={gitConfigOpen} onClose={() => setGitConfigOpen(false)} />
       </>
@@ -383,6 +446,7 @@ export default function App() {
           className="flex items-center gap-1.5 px-1.5 py-0.5 rounded text-xs text-[#5c6370] hover:text-[#c8cdd6] hover:bg-[#1d2030]"
           title="Vault configuration"
         >
+          {vaultMode === "volume" ? <Database size={12} /> : null}
           {vaultMode === "browser" ? <Globe size={12} /> : null}
           {vaultMode === "local" ? <FolderOpen size={12} /> : null}
           {vaultMode === "git" ? <GitBranch size={12} /> : null}
@@ -642,6 +706,7 @@ function WelcomeScreen({
   fsSupported,
   onOpen,
   onLocal,
+  onVolume,
   error,
   gitConfigured,
   onSetupGit,
@@ -650,12 +715,14 @@ function WelcomeScreen({
   fsSupported: boolean
   onOpen: () => void
   onLocal: () => void
+  onVolume: () => void
   error: string | null
   gitConfigured: boolean
   onSetupGit: () => void
   onGit: () => void
 }) {
   const pullError = useGit((s) => s.pullError)
+  const volumeError = useVolume((s) => s.error)
   return (
     <div className="flex items-center justify-center h-full overflow-auto p-6">
       <div className="w-full max-w-2xl">
@@ -674,14 +741,20 @@ function WelcomeScreen({
               Open a Vault
             </h2>
             <p className="text-xs text-[#7a8290] mb-4">
-              Choose where your notes live: a real folder on disk, in-browser storage, or a git
-              repository. You can change this any time from the header.
+              Choose where your notes live — the server volume (default), a folder on disk,
+              in-browser storage, or a git repository. You can change this any time from the header.
             </p>
             <div className="flex flex-col gap-2">
               <button
+                onClick={onVolume}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#7aa2f7] hover:bg-[#8db4ff] text-[#0f1115] text-sm font-medium rounded-md"
+              >
+                <Database size={16} /> Use Server Volume
+              </button>
+              <button
                 onClick={onOpen}
                 disabled={!fsSupported}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#7aa2f7] hover:bg-[#8db4ff] text-[#0f1115] text-sm font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1d2030] hover:bg-[#2a2f3a] text-[#c8cdd6] text-sm font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <FolderOpen size={16} />
                 {fsSupported ? "Open Folder as Vault" : "FSA not supported"}
@@ -705,6 +778,9 @@ function WelcomeScreen({
               <p className="text-xs text-[#5c6370] mt-3">
                 Your browser doesn&apos;t support the File System Access API. Use Chrome/Edge for on-disk storage.
               </p>
+            )}
+            {volumeError && (
+              <p className="text-xs text-[#f7768e] mt-3 break-words">⚠ Volume unavailable: {volumeError}</p>
             )}
             {error && <p className="text-sm text-[#f7768e] mt-3">{error}</p>}
             {pullError && (

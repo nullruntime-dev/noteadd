@@ -1,7 +1,10 @@
 export type NodeType = "folder" | "note"
 
-/** Where the vault's notes live: browser IndexedDB, a local disk folder, or a git remote. */
-export type VaultMode = "browser" | "local" | "git"
+/**
+ * Where the vault's notes live: the server's persistent volume (default),
+ * browser IndexedDB, a local disk folder, or a git remote.
+ */
+export type VaultMode = "volume" | "browser" | "local" | "git"
 
 export interface NoteNode {
   id: string
