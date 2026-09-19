@@ -15,6 +15,8 @@ import {
   RefreshCw,
   Globe,
   ChevronDown,
+  Menu,
+  X,
 } from "lucide-react"
 import clsx from "clsx"
 import { useVault } from "./store/vault"
@@ -86,12 +88,26 @@ function loadSplitPct(): number {
   return SPLIT_DEFAULT_PCT
 }
 
-function saveSplitPct(pct: number): void {
+function saveSplitPct(w: number): void {
   try {
-    localStorage.setItem(SPLIT_PCT_KEY, String(pct))
+    localStorage.setItem(SPLIT_PCT_KEY, String(w))
   } catch {
     // ignore
   }
+}
+
+const MOBILE_QUERY = "(max-width: 767px)"
+
+/** Tracks the md breakpoint — phones get a drawer sidebar and single-pane view. */
+function useIsMobile(): boolean {
+  const [mobile, setMobile] = useState(() => window.matchMedia(MOBILE_QUERY).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_QUERY)
+    const onChange = () => setMobile(mq.matches)
+    mq.addEventListener("change", onChange)
+    return () => mq.removeEventListener("change", onChange)
+  }, [])
+  return mobile
 }
 
 export default function App() {
@@ -123,6 +139,10 @@ export default function App() {
   const [view, setView] = useState<ViewMode>("split")
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
   const [splitPct, setSplitPct] = useState(loadSplitPct)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const isMobile = useIsMobile()
+  // Split view is a desktop affordance; phones always get a single pane.
+  const effView: ViewMode = isMobile && view === "split" ? "editor" : view
   const [searchOpen, setSearchOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
   const [gitConfigOpen, setGitConfigOpen] = useState(false)
@@ -409,6 +429,25 @@ export default function App() {
     [nodes, activeId],
   )
 
+  // Close the mobile drawer when a note is opened from the tree/search.
+  const prevActiveId = useRef(activeId)
+  useEffect(() => {
+    if (prevActiveId.current !== activeId) {
+      prevActiveId.current = activeId
+      setSidebarOpen(false)
+    }
+  }, [activeId])
+
+  // Escape closes the mobile drawer.
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [sidebarOpen])
+
   if ((loading || volumePulling) && nodes.length === 0) {
     return <div className="flex items-center justify-center h-full text-[#5c6370]">Loading…</div>
   }
@@ -438,12 +477,20 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Top bar */}
-      <header className="flex items-center gap-2 px-3 py-2 border-b border-[#232833] bg-[#13151b]">
-        <span className="text-sm font-semibold text-white mr-2">noteadd</span>
+      {/* Top bar — wraps to two rows on phones: nav + git sync controls */}
+      <header className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-[#232833] bg-[#13151b]">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="md:hidden flex items-center justify-center w-8 h-8 -ml-1 rounded text-[#c8cdd6] hover:bg-[#1d2030]"
+          title="Open notes menu"
+          aria-label="Open notes menu"
+        >
+          <Menu size={18} />
+        </button>
+        <span className="hidden sm:inline text-sm font-semibold text-white mr-2">noteadd</span>
         <button
           onClick={() => setVaultConfigOpen(true)}
-          className="flex items-center gap-1.5 px-1.5 py-0.5 rounded text-xs text-[#5c6370] hover:text-[#c8cdd6] hover:bg-[#1d2030]"
+          className="flex items-center gap-1.5 px-1.5 py-1 rounded text-xs text-[#5c6370] hover:text-[#c8cdd6] hover:bg-[#1d2030]"
           title="Vault configuration"
         >
           {vaultMode === "volume" ? <Database size={12} /> : null}
@@ -455,38 +502,45 @@ export default function App() {
         </button>
         <div className="flex-1" />
         <div className="flex items-center gap-0.5 bg-[#0f1115] border border-[#232833] rounded p-0.5">
-          <ViewBtn active={view === "editor"} onClick={() => setView("editor")} title="Editor only">
+          <ViewBtn active={effView === "editor"} onClick={() => setView("editor")} title="Editor only">
             <PenLine size={14} />
           </ViewBtn>
-          <ViewBtn active={view === "split"} onClick={() => setView("split")} title="Split view">
+          <ViewBtn
+            active={!isMobile && view === "split"}
+            onClick={() => setView("split")}
+            title="Split view"
+            className="hidden md:block"
+          >
             <Columns2 size={14} />
           </ViewBtn>
-          <ViewBtn active={view === "preview"} onClick={() => setView("preview")} title="Preview only">
+          <ViewBtn active={effView === "preview"} onClick={() => setView("preview")} title="Preview only">
             <Eye size={14} />
           </ViewBtn>
         </div>
         <button
           onClick={() => setSearchOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-[#a0a7b5] hover:text-white border border-[#232833] rounded"
+          className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-[#a0a7b5] hover:text-white border border-[#232833] rounded"
           title="Search (Ctrl+K)"
         >
-          <SearchIcon size={13} /> Search
-          <kbd className="text-[10px] text-[#5c6370]">⌘K</kbd>
+          <SearchIcon size={13} />
+          <span className="hidden sm:inline">Search</span>
+          <kbd className="hidden md:inline text-[10px] text-[#5c6370]">⌘K</kbd>
         </button>
         <button
           onClick={() => setGraphOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-[#a0a7b5] hover:text-white border border-[#232833] rounded"
+          className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-[#a0a7b5] hover:text-white border border-[#232833] rounded"
           title="Graph view (Ctrl+G)"
         >
-          <Network size={13} /> Graph
+          <Network size={13} />
+          <span className="hidden sm:inline">Graph</span>
         </button>
 
-        <div className="flex items-center gap-1.5 pl-2 ml-1 border-l border-[#232833]">
+        <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-0.5 pt-1.5 -mx-3 px-3 border-t border-[#232833] sm:pt-0 sm:pb-0 sm:mx-0 sm:px-0 sm:pl-2 sm:ml-1 sm:border-t-0 sm:border-l">
           <button
             onClick={handlePull}
             disabled={gitPulling}
             className={clsx(
-              "flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border rounded transition-colors",
+              "flex items-center flex-shrink-0 gap-1.5 px-2.5 py-1.5 sm:py-1 text-xs font-medium border rounded transition-colors",
               pullFlash === "ok" && "border-[#9ece6a] text-[#9ece6a] bg-[#9ece6a10]",
               pullFlash === "err" && "border-[#f7768e] text-[#f7768e] bg-[#f7768e10]",
               !pullFlash && "border-[#232833] text-[#a0a7b5] hover:text-white",
@@ -509,7 +563,7 @@ export default function App() {
             onClick={handleUpload}
             disabled={gitUploading}
             className={clsx(
-              "flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border rounded transition-colors",
+              "flex items-center flex-shrink-0 gap-1.5 px-2.5 py-1.5 sm:py-1 text-xs font-medium border rounded transition-colors",
               uploadFlash === "ok" && "border-[#9ece6a] text-[#9ece6a] bg-[#9ece6a10]",
               uploadFlash === "err" && "border-[#f7768e] text-[#f7768e] bg-[#f7768e10]",
               !uploadFlash && gitConfigured && "border-[#7aa2f7] text-[#7aa2f7] hover:bg-[#7aa2f710]",
@@ -531,7 +585,7 @@ export default function App() {
           </button>
           <button
             onClick={() => setGitConfigOpen(true)}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-[#a0a7b5] hover:text-white border border-[#232833] rounded"
+            className="flex items-center flex-shrink-0 gap-1.5 px-2 py-1.5 sm:py-1 text-xs text-[#a0a7b5] hover:text-white border border-[#232833] rounded"
             title="Git repository settings"
           >
             {gitConfigured ? <GitBranch size={13} /> : <Settings size={13} />}
@@ -543,7 +597,7 @@ export default function App() {
             onClick={() => setAutoSync(!autoSync)}
             disabled={!gitConfigured}
             className={clsx(
-              "flex items-center gap-1.5 px-2 py-1 text-xs border rounded disabled:opacity-40 disabled:cursor-not-allowed",
+              "flex items-center flex-shrink-0 gap-1.5 px-2 py-1.5 sm:py-1 text-xs border rounded disabled:opacity-40 disabled:cursor-not-allowed",
               autoSync
                 ? "border-[#9ece6a] text-[#9ece6a] bg-[#9ece6a10]"
                 : "border-[#232833] text-[#a0a7b5] hover:text-white",
@@ -564,28 +618,50 @@ export default function App() {
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar */}
+        {/* Desktop sidebar */}
         <aside
           style={{ width: sidebarWidth }}
-          className="flex-shrink-0 bg-[#13151b] flex flex-col"
+          className="hidden md:flex flex-shrink-0 bg-[#13151b] flex-col"
         >
-          <FileTree />
-          <div className="border-t border-[#232833] overflow-auto max-h-72">
-            <TagsPanel />
-          </div>
-          <div className="border-t border-[#232833] overflow-auto max-h-72">
-            {active && <BacklinksPanel noteId={active.id} />}
-          </div>
+          <SidebarPanels noteId={active?.id} />
         </aside>
         <ResizeHandle
           direction="col"
           ariaLabel="Resize sidebar"
-          className="w-1.5 border-r border-[#232833]"
+          className="hidden md:block w-1.5 border-r border-[#232833]"
           onDrag={(x) => applySidebarWidth(x, false)}
           onDragEnd={() => saveSidebarWidth(sidebarWidthRef.current)}
           onReset={() => applySidebarWidth(SIDEBAR_DEFAULT)}
           onKeyAdjust={(d) => applySidebarWidth(sidebarWidthRef.current + d * 24)}
         />
+
+        {/* Mobile drawer */}
+        <aside
+          className={clsx(
+            "fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] bg-[#13151b] shadow-2xl flex flex-col transition-transform duration-200 md:hidden",
+            sidebarOpen ? "translate-x-0" : "-translate-x-full",
+          )}
+        >
+          <div className="flex items-center justify-between px-3 py-2 border-b border-[#232833]">
+            <span className="text-sm font-semibold text-white">noteadd</span>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="flex items-center justify-center w-8 h-8 rounded text-[#a0a7b5] hover:bg-[#2a2f3a] hover:text-white"
+              title="Close menu"
+              aria-label="Close menu"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <SidebarPanels noteId={active?.id} />
+        </aside>
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/50 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
+          />
+        )}
 
         {/* Main editor area */}
         <main className="flex-1 min-w-0 flex flex-col">
@@ -607,15 +683,15 @@ export default function App() {
                 {active.path}
               </div>
               <div ref={splitRowRef} className="flex-1 min-h-0 flex">
-                {view !== "preview" && (
+                {effView !== "preview" && (
                   <div
-                    className={clsx("min-h-0", view === "split" ? "flex-shrink-0" : "w-full")}
-                    style={view === "split" ? { width: `${splitPct}%` } : undefined}
+                    className={clsx("min-h-0", effView === "split" ? "flex-shrink-0" : "w-full")}
+                    style={effView === "split" ? { width: `${splitPct}%` } : undefined}
                   >
                     <MarkdownEditor noteId={active.id} content={active.content} />
                   </div>
                 )}
-                {view === "split" && (
+                {effView === "split" && (
                   <ResizeHandle
                     direction="col"
                     ariaLabel="Resize editor and preview"
@@ -630,8 +706,8 @@ export default function App() {
                     onKeyAdjust={(d) => applySplitPct(splitPctRef.current + d * 5)}
                   />
                 )}
-                {view !== "editor" && (
-                  <div className={clsx("min-h-0", view === "split" ? "flex-1 min-w-0" : "w-full")}>
+                {effView !== "editor" && (
+                  <div className={clsx("min-h-0", effView === "split" ? "flex-1 min-w-0" : "w-full")}>
                     <MarkdownPreview noteId={active.id} content={active.content} />
                   </div>
                 )}
@@ -661,7 +737,7 @@ export default function App() {
       {(uploadFlash || gitUploadError || pullFlash || autoFlash) && (
         <div
           className={clsx(
-            "fixed bottom-4 right-4 z-50 max-w-sm px-3 py-2 rounded shadow-lg text-sm border",
+            "fixed bottom-4 left-4 right-4 sm:left-auto z-50 sm:max-w-sm px-3 py-2 rounded shadow-lg text-sm border",
             (uploadFlash === "ok" || pullFlash === "ok" || autoFlash?.includes("up to date") || autoFlash?.includes("pushed")) && "bg-[#15171c] border-[#9ece6a] text-[#9ece6a]",
             (uploadFlash === "err" || pullFlash === "err" || autoFlash?.includes("failed")) && "bg-[#15171c] border-[#f7768e] text-[#f7768e]",
           )}
@@ -677,15 +753,32 @@ export default function App() {
   )
 }
 
+/** File tree + tags + backlinks, shared by the desktop sidebar and mobile drawer. */
+function SidebarPanels({ noteId }: { noteId?: string }) {
+  return (
+    <>
+      <FileTree />
+      <div className="border-t border-[#232833] overflow-auto max-h-72">
+        <TagsPanel />
+      </div>
+      <div className="border-t border-[#232833] overflow-auto max-h-72">
+        {noteId && <BacklinksPanel noteId={noteId} />}
+      </div>
+    </>
+  )
+}
+
 function ViewBtn({
   active,
   onClick,
   title,
+  className,
   children,
 }: {
   active: boolean
   onClick: () => void
   title: string
+  className?: string
   children: React.ReactNode
 }) {
   return (
@@ -694,6 +787,7 @@ function ViewBtn({
       title={title}
       className={clsx(
         "px-2 py-1 rounded",
+        className,
         active ? "bg-[#2a2f3a] text-white" : "text-[#7a8290] hover:text-white",
       )}
     >
@@ -724,10 +818,10 @@ function WelcomeScreen({
   const pullError = useGit((s) => s.pullError)
   const volumeError = useVolume((s) => s.error)
   return (
-    <div className="flex items-center justify-center h-full overflow-auto p-6">
+    <div className="flex items-center justify-center h-full overflow-auto p-4 sm:p-6">
       <div className="w-full max-w-2xl">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">notepadd</h1>
+          <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">notepadd</h1>
           <p className="text-[#7a8290]">
             A local-first markdown vault with wiki-links, backlinks, tags, a graph view, and git sync.
           </p>

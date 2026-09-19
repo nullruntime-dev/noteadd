@@ -163,7 +163,7 @@ export function GraphView({ onClose }: GraphViewProps) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="w-[88vw] h-[80vh] bg-[#15171c] border border-[#232833] rounded-lg overflow-hidden relative"
+        className="w-[95vw] h-[88dvh] sm:w-[88vw] sm:h-[80vh] bg-[#15171c] border border-[#232833] rounded-lg overflow-hidden relative"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="absolute top-3 right-3 z-10 flex gap-2">

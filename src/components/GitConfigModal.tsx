@@ -75,7 +75,7 @@ export function GitConfigModal({ open, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md bg-[#15171c] border border-[#232833] rounded-lg shadow-2xl mx-4"
+        className="w-full max-w-md bg-[#15171c] border border-[#232833] rounded-lg shadow-2xl mx-4 max-h-[90dvh] overflow-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#232833]">

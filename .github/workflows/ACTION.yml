@@ -48,8 +48,8 @@ jobs:
         build-args: |
           BASE_IMAGE=node:24.16-alpine
         push: true
-        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.5,${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest
-        cache-from: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.5,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest
-        cache-to: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.5,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest,mode=max
+        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.6,${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest
+        cache-from: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.6,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest
+        cache-to: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:1.0.6,ref=${{ secrets.DOCKER_HUB_USERNAME }}/noteadd:latest,mode=max
 
     

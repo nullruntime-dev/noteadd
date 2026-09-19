@@ -12,6 +12,40 @@ body,
   margin: 0;
 }
 
+/* Mobile browsers: use the dynamic viewport so toolbars don't clip the app. */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #0f1115;
+  color: #e6e6e6;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Touch devices: iOS zooms into inputs with font-size < 16px, and the
+   editor's 14px monospace is cramped on phones — bump both. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  .cm-editor {
+    font-size: 16px !important;
+  }
+  /* hover-only rows would be unreachable — the FileTree shows its row actions
+     on touch, so give those rows a comfortable tap height */
+  .tree-row {
+    min-height: 34px;
+  }
+}
+
 @keyframes spin-slow {
   to { transform: rotate(360deg); }
 }

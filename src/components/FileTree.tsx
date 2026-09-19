@@ -88,7 +88,7 @@ function TreeNode({ node, depth }: TreeNodeProps) {
     <div>
       <div
         className={clsx(
-          "group flex items-center gap-1 pr-2 py-1 cursor-pointer select-none",
+          "tree-row group flex items-center gap-1 pr-2 py-1 cursor-pointer select-none",
           isActive && "bg-[#1d2030]",
         )}
         style={{ paddingLeft: depth * 12 + 8 }}
@@ -121,7 +121,7 @@ function TreeNode({ node, depth }: TreeNodeProps) {
           )}
         </span>
         {!renaming && (
-          <div className="hidden group-hover:flex gap-0.5">
+          <div className="hidden group-hover:flex [@media(hover:none)]:flex gap-0.5">
             {node.type === "folder" && (
               <>
                 <button
